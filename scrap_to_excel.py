@@ -1,49 +1,41 @@
 import time
 import json
+import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.keys import Keys
-from neo4j import GraphDatabase
-from dotenv import load_dotenv
-import os
 
-load_dotenv()
-
-# Import Neo4j credentials from .env
-NEO4J_URI = os.getenv("NEO4J_URI")
-NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
-
-# Path to ChromeDriver
+# Path to ChromeDriver (update this based on your system)
 chromedriver_path = "C:\Windows\chromedriver.exe"
 
-# Selenium Setup
+# Set up Selenium WebDriver options
 chrome_options = Options()
-chrome_options.add_argument("--headless")  
+chrome_options.add_argument("--headless")  # Run in headless mode (no UI)
 chrome_options.add_argument("--disable-gpu")
 chrome_options.add_argument("--no-sandbox")
 
-# Start the WebDriver
+# Start WebDriver
 service = Service(chromedriver_path)
 driver = webdriver.Chrome(service=service, options=chrome_options)
 
+# Open McDonald's location page
 url = "https://www.mcdonalds.com.my/locate-us"
 driver.get(url)
-time.sleep(2)
+time.sleep(3)  # Wait for page to load
 
+# Select "Kuala Lumpur" from the dropdown
 state_dropdown = Select(driver.find_element(By.ID, "states"))
 state_dropdown.select_by_value("Kuala Lumpur")
-time.sleep(2)
+time.sleep(3)  # Wait for results to load
 
+# Function to scrape JSON-LD data
 def scrape_page():
-    # Scrape the page
     outlets = []
     results_div = driver.find_element(By.ID, "results")
     script_tags = results_div.find_elements(By.TAG_NAME, "script")
-    
+
     for script in script_tags:
         script_content = script.get_attribute("innerText").strip()
         try:
@@ -64,49 +56,31 @@ def scrape_page():
                     "Latitude": latitude,
                     "Longitude": longitude,
                     "Menu URL": menu_url,
-                    "Waze URL": waze_url
+                    "Waze Link": waze_url
                 })
         except json.JSONDecodeError:
-            continue
+            continue  # Skip if JSON is invalid
+
     return outlets
 
-# Scrape the first page
+# Scrape first page
 data = scrape_page()
 
-# Handel pagination
+# Handle pagination
 while True:
     try:
         next_button = driver.find_element(By.LINK_TEXT, "Next")
         next_button.click()
-        time.sleep(3)
+        time.sleep(3)  # Wait for next page to load
         data.extend(scrape_page())
     except:
-        break
+        break  # No more pages
 
-# Clode the WebDriver
+# Convert to DataFrame & Save to Excel
+df = pd.DataFrame(data)
+df.to_excel("McDonalds_Kuala_Lumpur.xlsx", index=False)
+
+# Close the WebDriver
 driver.quit()
 
-# Import to Neo4j Database
-def save_to_neo4j(data):
-    driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
-    def add_location(tx, name, phone, address, latitude, longitude, menu_url, waze_url):
-        query = """
-        MERGE (m:McDonalds {name: $name})
-        SET m.address = $address,
-        m.phone = $phone,
-        m.latitude = $latitude,
-        m.longitude = $longitude,
-        m.menu_url = $menu_url,
-        m.waze_url = $waze_url
-        """
-        tx.run(query, name = name, phone = phone, address = address, latitude = latitude, longitude = longitude, menu_url = menu_url, waze_url = waze_url)
-        with driver.session() as session:
-            for outlet in data:
-                session.execute_write(add_location, outlet["name"], outlet["phone"], outlet["address"], outlet["latitude"], outlet["longitude"], outlet["menu_url"], outlet["waze_url"])
-        
-        driver.close()
-        print("Data Imported Successfully!!!!!")
-
-
-save_to_neo4j(data)
-print("Data Imported Successfully!!!!!")
+print("Scraping completed! Data saved as 'McDonalds_Kuala_Lumpur.xlsx'.")
