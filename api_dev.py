@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 import psycopg2
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from psycopg2.extras import RealDictCursor
 
 load_dotenv()
@@ -48,3 +48,17 @@ def get_outlet(outlets_id: int):
             raise HTTPException(status_code=404, detail="Outlet not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to retrieve outlet")
+    
+@app.get("/outlet/search")
+def search_outlets(name: str = Query(..., description="Name of the outlet:")):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM mcdonalds_outlets WHERE name ILIKE %s;", (f"%{name}%",))
+        outlet = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return {"data": outlet}
+    except Exception as e:
+        raise HTTPException (status_code=500, detail=str(e))
+
