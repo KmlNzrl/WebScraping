@@ -80,3 +80,16 @@ def search_outlets(name: str = Query(..., description="Name of the outlet:")):
 #         return {"data", nearest_outlet}
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/outlets/with-geolocation")
+def get_outlets_with_geolocation():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM mcdonalds_outlets WHERE geolocation IS NOT NULL;")
+        outlets = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return{"data": outlets}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
